@@ -1,0 +1,33 @@
+{
+  "name": "pokemon-tcg-discord-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "contract:emit": "prisma contract emit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.3.0",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "@prisma/orm-postgres": "8.0.0-rc.8",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@prisma/cli-engine": "0.2.3",
+    "@types/node": "^26.4.0",
+    "prisma": "8.0.0-rc.10",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
