@@ -1,21 +1,520 @@
 // use prisma-next
+//
+// Pokeora database contract — translated from SCHEMA.md.
+//
+// Toolchain notes (verified against the installed Prisma 8 CLI):
+// - `Uuid` is a native named type (pg/uuid@1); the alias below is the single
+//   point every UUID-keyed model references.
+// - `@@check(...)` is natively supported, so the SCHEMA.md value rules
+//   (quantity > 0, balance >= 0, …) are declared here in the contract instead
+//   of hand-written migration SQL — the planner emits them into every
+//   migration that creates the columns and drift detection guards them.
+// - Enums use the `@@type("pg/text@1")` codec with explicit lowercase stored
+//   values; the planner generates the membership CHECK constraints.
+// - Deletion behavior: history/audit tables (LedgerEntry, MarketTransaction,
+//   PackOpening, OutboxEvent, CardPrice) are protected with Restrict so they
+//   are never cascade-deleted.
 
-model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  username  String?
-  name      String?
-  posts     Post[]
-  createdAt TimestamptzString @default(now())
-  updatedAt temporal.updatedAtString()
+types {
+  Uuid = Uuid
 }
 
-model Post {
-  id        Int      @id @default(autoincrement())
-  title     String
-  content   String?
-  author    User     @relation(fields: [authorId], references: [id])
-  authorId  Int
-  createdAt TimestamptzString @default(now())
-  updatedAt temporal.updatedAtString()
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id        Uuid     @id @default(uuid())
+  discordId String   @unique
+  username  String
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  wallet           Wallet?
+  cardOwnerships   CardOwnership[]
+  binders          Binder[]
+  favoriteCards    FavoriteCard[]
+  setProgress      SetProgress[]
+  userPacks        UserPack[]
+  packOpenings     PackOpening[]
+  marketListings   MarketListing[]
+  purchases        MarketTransaction[] @relation("MarketTransactionBuyer")
+  sales            MarketTransaction[] @relation("MarketTransactionSeller")
+  tradesInitiated  Trade[]             @relation("TradeInitiator")
+  tradesReceived   Trade[]             @relation("TradeReceiver")
+  tradeItems       TradeItem[]
+  outboxEvents     OutboxEvent[]
+  idempotencyKeys  IdempotencyKey[]
+  userAchievements UserAchievement[]
+  userQuests       UserQuest[]
+}
+
+// ---------------------------------------------------------------------------
+// Card domain
+// ---------------------------------------------------------------------------
+
+model Set {
+  id          Uuid     @id @default(uuid())
+  externalId  String   @unique
+  name        String
+  series      String
+  releaseDate Date
+  totalCards  Int
+  logoUrl     String
+  symbolUrl   String
+  createdAt   DateTime @default(now())
+  updatedAt   temporal.updatedAt()
+
+  cards       Card[]
+  packs       Pack[]
+  setProgress SetProgress[]
+}
+
+model Card {
+  id         Uuid     @id @default(uuid())
+  externalId String   @unique
+  setId      Uuid
+  name       String
+  number     String
+  rarity     String
+  imageSmall String
+  imageLarge String
+  createdAt  DateTime @default(now())
+  updatedAt  temporal.updatedAt()
+
+  set      Set            @relation(fields: [setId], references: [id], onDelete: Restrict)
+  variants CardVariant[]
+
+  @@index([name])
+  @@index([setId])
+  @@index([rarity])
+}
+
+model CardVariant {
+  id            Uuid     @id @default(uuid())
+  cardId        Uuid
+  variantType   String
+  finish        String
+  language      String
+  isCollectible Boolean
+  createdAt     DateTime @default(now())
+
+  card       Card            @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  prices     CardPrice[]
+  ownerships CardOwnership[]
+
+  @@unique([cardId, variantType, finish, language])
+}
+
+model CardPrice {
+  id        Uuid           @id @default(uuid())
+  variantId Uuid
+  source    String
+  currency  String
+  low       Numeric(10, 2)
+  mid       Numeric(10, 2)
+  high      Numeric(10, 2)
+  market    Numeric(10, 2)
+  recordedAt DateTime
+
+  variant CardVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([variantId, recordedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Collection domain
+// ---------------------------------------------------------------------------
+
+model CardOwnership {
+  id              Uuid     @id @default(uuid())
+  userId          Uuid
+  variantId       Uuid
+  quantity        Int
+  condition       String
+  firstAcquiredAt DateTime @default(now())
+  lastAcquiredAt  DateTime @default(now())
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant        CardVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  binderSlots    BinderSlot[]
+  favoriteCards  FavoriteCard[]
+  marketListings MarketListing[]
+  tradeItems     TradeItem[]
+
+  @@unique([userId, variantId, condition])
+  @@index([variantId])
+
+  @@check(expression: "quantity > 0", name: "card_ownership_quantity_positive")
+}
+
+model Binder {
+  id          Uuid     @id @default(uuid())
+  userId      Uuid
+  name        String
+  description String
+  isPublic    Boolean
+  createdAt   DateTime @default(now())
+  updatedAt   temporal.updatedAt()
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slots BinderSlot[]
+}
+
+model BinderSlot {
+  id          Uuid     @id @default(uuid())
+  binderId    Uuid
+  ownershipId Uuid
+  page        Int
+  position    Int
+
+  binder    Binder        @relation(fields: [binderId], references: [id], onDelete: Cascade)
+  ownership CardOwnership @relation(fields: [ownershipId], references: [id], onDelete: Cascade)
+
+  @@unique([binderId, page, position])
+
+  @@check(expression: "page >= 0", name: "binder_slot_page_nonnegative")
+  @@check(expression: "position >= 0", name: "binder_slot_position_nonnegative")
+}
+
+model FavoriteCard {
+  userId      Uuid
+  ownershipId Uuid
+  createdAt   DateTime @default(now())
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ownership CardOwnership @relation(fields: [ownershipId], references: [id], onDelete: Cascade)
+
+  @@id([userId, ownershipId])
+}
+
+model SetProgress {
+  userId            Uuid
+  setId             Uuid
+  uniqueCards       Int
+  totalCards        Int
+  completionPercent Decimal
+  calculatedAt      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  set  Set  @relation(fields: [setId], references: [id], onDelete: Cascade)
+
+  @@id([userId, setId])
+}
+
+// ---------------------------------------------------------------------------
+// Pack domain
+// ---------------------------------------------------------------------------
+
+model Pack {
+  id        Uuid     @id @default(uuid())
+  setId     Uuid
+  name      String
+  price     BigInt
+  active    Boolean
+  createdAt DateTime @default(now())
+
+  set       Set         @relation(fields: [setId], references: [id], onDelete: Restrict)
+  slots     PackSlot[]
+  userPacks UserPack[]
+
+  @@check(expression: "price >= 0", name: "pack_price_nonnegative")
+}
+
+model PackSlot {
+  id       Uuid     @id @default(uuid())
+  packId   Uuid
+  slotType String
+  position Int
+  count    Int
+
+  pack  Pack           @relation(fields: [packId], references: [id], onDelete: Cascade)
+  rules PackSlotRule[]
+
+  @@unique([packId, position])
+
+  @@check(expression: "count > 0", name: "pack_slot_count_positive")
+}
+
+// Criteria-based rules interpreted by the Pack Engine — deliberately scalar
+// fields, no relation to CardVariant.
+model PackSlotRule {
+  id          Uuid     @id @default(uuid())
+  packSlotId  Uuid
+  rarity      String
+  variantType String
+  weight      Decimal
+
+  packSlot PackSlot @relation(fields: [packSlotId], references: [id], onDelete: Cascade)
+
+  @@check(expression: "weight > 0", name: "pack_slot_rule_weight_positive")
+}
+
+model UserPack {
+  id         Uuid           @id @default(uuid())
+  userId     Uuid
+  packId     Uuid
+  status     UserPackStatus
+  acquiredAt DateTime
+  openedAt   DateTime?
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pack    Pack         @relation(fields: [packId], references: [id], onDelete: Restrict)
+  opening PackOpening?
+
+  @@index([userId, status])
+}
+
+model PackOpening {
+  id         Uuid     @id @default(uuid())
+  userPackId Uuid     @unique
+  userId     Uuid
+  result     Jsonb
+  openedAt   DateTime
+
+  userPack UserPack @relation(fields: [userPackId], references: [id], onDelete: Restrict)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Economy domain
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id        Uuid     @id @default(uuid())
+  userId    Uuid     @unique
+  balance   BigInt
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries LedgerEntry[]
+
+  @@check(expression: "balance >= 0", name: "wallet_balance_nonnegative")
+}
+
+model LedgerEntry {
+  id            Uuid     @id @default(uuid())
+  walletId      Uuid
+  type          String
+  amount        BigInt
+  balanceAfter  BigInt
+  referenceType String
+  referenceId   Uuid
+  description   String
+  createdAt     DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, createdAt])
+
+  @@check(expression: "amount != 0", name: "ledger_entry_amount_nonzero")
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace domain
+// ---------------------------------------------------------------------------
+
+model MarketListing {
+  id          Uuid                @id @default(uuid())
+  sellerId    Uuid
+  ownershipId Uuid
+  quantity    Int
+  price       BigInt
+  status      MarketListingStatus
+  createdAt   DateTime            @default(now())
+  expiresAt   DateTime
+
+  seller      User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  ownership   CardOwnership       @relation(fields: [ownershipId], references: [id], onDelete: Restrict)
+  transaction MarketTransaction?
+
+  @@index([status])
+  @@index([sellerId])
+  @@index([ownershipId])
+
+  @@check(expression: "quantity > 0", name: "market_listing_quantity_positive")
+  @@check(expression: "price >= 0", name: "market_listing_price_nonnegative")
+}
+
+model MarketTransaction {
+  id          Uuid     @id @default(uuid())
+  listingId   Uuid     @unique
+  buyerId     Uuid
+  sellerId    Uuid
+  price       BigInt
+  purchasedAt DateTime
+
+  listing MarketListing @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  buyer   User          @relation("MarketTransactionBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  seller  User          @relation("MarketTransactionSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+
+  @@index([buyerId])
+}
+
+// ---------------------------------------------------------------------------
+// Trading domain
+// ---------------------------------------------------------------------------
+
+model Trade {
+  id          Uuid        @id @default(uuid())
+  initiatorId Uuid
+  receiverId  Uuid
+  status      TradeStatus
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime
+  completedAt DateTime?
+
+  initiator User        @relation("TradeInitiator", fields: [initiatorId], references: [id], onDelete: Restrict)
+  receiver  User        @relation("TradeReceiver", fields: [receiverId], references: [id], onDelete: Restrict)
+  items     TradeItem[]
+
+  @@index([initiatorId, status])
+  @@index([receiverId, status])
+}
+
+model TradeItem {
+  id          Uuid     @id @default(uuid())
+  tradeId     Uuid
+  ownershipId Uuid
+  userId      Uuid
+  quantity    Int
+
+  trade     Trade         @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  ownership CardOwnership @relation(fields: [ownershipId], references: [id], onDelete: Restrict)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId])
+
+  @@check(expression: "quantity > 0", name: "trade_item_quantity_positive")
+}
+
+// ---------------------------------------------------------------------------
+// Infrastructure / event support
+// ---------------------------------------------------------------------------
+
+model OutboxEvent {
+  id          Uuid              @id @default(uuid())
+  userId      Uuid
+  eventType   String
+  payload     Jsonb
+  status      OutboxEventStatus
+  attempts    Int
+  createdAt   DateTime          @default(now())
+  processedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+}
+
+model IdempotencyKey {
+  key       String   @id
+  userId    Uuid
+  operation String
+  response  Jsonb
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Progression domain
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          Uuid     @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String
+  criteria    Jsonb
+  reward      BigInt
+  active      Boolean
+
+  awards UserAchievement[]
+}
+
+model UserAchievement {
+  userId        Uuid
+  achievementId Uuid
+  earnedAt      DateTime
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+}
+
+model Quest {
+  id          Uuid     @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String
+  criteria    Jsonb
+  reward      BigInt
+  active      Boolean
+
+  userQuests UserQuest[]
+}
+
+model UserQuest {
+  id          Uuid            @id @default(uuid())
+  userId      Uuid
+  questId     Uuid
+  progress    Int
+  status      UserQuestStatus
+  startedAt   DateTime
+  completedAt DateTime?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest Quest @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+
+  @@check(expression: "progress >= 0", name: "user_quest_progress_nonnegative")
+}
+
+// ---------------------------------------------------------------------------
+// Enums — stored as text via the pg/text@1 codec with explicit lowercase
+// values; the planner generates membership CHECK constraints for each column.
+// ---------------------------------------------------------------------------
+
+enum UserPackStatus {
+  @@type("pg/text@1")
+  Unopened = "unopened"
+  Opened   = "opened"
+}
+
+enum MarketListingStatus {
+  @@type("pg/text@1")
+  Active    = "active"
+  Sold      = "sold"
+  Cancelled = "cancelled"
+  Expired   = "expired"
+}
+
+enum TradeStatus {
+  @@type("pg/text@1")
+  Pending  = "pending"
+  Accepted = "accepted"
+  Declined = "declined"
+  Expired  = "expired"
+}
+
+enum OutboxEventStatus {
+  @@type("pg/text@1")
+  Pending   = "pending"
+  Processed = "processed"
+  Failed    = "failed"
+}
+
+enum UserQuestStatus {
+  @@type("pg/text@1")
+  Active    = "active"
+  Completed = "completed"
 }
