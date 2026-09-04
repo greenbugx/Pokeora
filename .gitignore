@@ -1,9 +1,18 @@
-.*/
-*.env
-.env.*
-!.env.example
+# Dependencies / build output
 node_modules/
 dist/
 coverage/
+
+# Environment
 .env
-prisma-next.md
+.env.*
+!.env.example
+
+# Editor / tooling
+.*/
+!.vscode/
+*.log
+*.tsbuildinfo
+
+# Local caches
+.tmp/

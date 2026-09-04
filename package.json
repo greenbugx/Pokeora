@@ -4,8 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "contract:emit": "prisma contract emit"
+    "test": "tsx --test tests/*.test.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "contract:emit": "prisma contract emit",
+    "sync:cards": "tsx scripts/sync-cards.ts"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +22,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1",
     "@prisma/orm-postgres": "8.0.0-rc.8",
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2"
