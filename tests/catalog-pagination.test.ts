@@ -21,7 +21,7 @@ class InMemoryPageContextStore implements CatalogPageContextStore {
   async save(context: NewCatalogPageContext): Promise<string | null> {
     if (this.failSave) return null;
     const id = Math.random().toString(16).slice(2, 12);
-    this.contexts.set(id, { ...context, id });
+    this.contexts.set(id, { ...context, id } as CatalogPageContext);
     return id;
   }
 

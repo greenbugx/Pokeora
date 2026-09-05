@@ -3,10 +3,12 @@ import { Client, Events, GatewayIntentBits, REST, Routes } from 'discord.js';
 import { RegisterPlayer } from './application/use-cases/register-player';
 import { GetCard, SearchCards } from './application/use-cases/catalog/card-queries';
 import { GetSet, SearchSets } from './application/use-cases/catalog/set-queries';
+import { GetCollection } from './application/use-cases/collection/get-collection';
 import { PrismaUserRepository } from './infrastructure/database/repositories/prisma-user.repository';
 import { PrismaWalletRepository } from './infrastructure/database/repositories/prisma-wallet.repository';
 import { PrismaCardQueryRepository } from './infrastructure/database/repositories/prisma-card-query.repository';
 import { PrismaSetQueryRepository } from './infrastructure/database/repositories/prisma-set-query.repository';
+import { PrismaOwnershipRepository } from './infrastructure/database/repositories/prisma-ownership.repository';
 import { CachedCardQueryRepository, CachedSetQueryRepository } from './infrastructure/cache/cached-catalog-repositories';
 import { IoredisCacheClient } from './infrastructure/cache/ioredis-cache-client';
 import { NullCacheClient } from './infrastructure/cache/null-cache-client';
@@ -49,6 +51,10 @@ async function main(): Promise<void> {
     searchCards: new SearchCards(cardQueryRepository),
     getSet: new GetSet(setQueryRepository),
     searchSets: new SearchSets(setQueryRepository),
+    getCollection: new GetCollection({
+      ownershipRepository: new PrismaOwnershipRepository(),
+      userRepository,
+    }),
     pageContextStore,
   };
 

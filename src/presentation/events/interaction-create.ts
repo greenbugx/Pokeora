@@ -4,10 +4,12 @@ import type { Logger } from '../../infrastructure/logging/logger';
 import { executeCardCommand, cardCommandDefinition } from '../commands/card';
 import { executeSetCommand, setCommandDefinition } from '../commands/set';
 import { executeRegisterCommand, registerCommandDefinition } from '../commands/register';
+import { executeCollectionCommand, collectionCommandDefinition } from '../commands/collection';
 import { PAGE_CUSTOM_ID_PREFIX, handlePageButton } from '../commands/catalog-pagination';
 import type { RegisterPlayer } from '../../application/use-cases/register-player';
 import type { GetCard, SearchCards } from '../../application/use-cases/catalog/card-queries';
 import type { GetSet, SearchSets } from '../../application/use-cases/catalog/set-queries';
+import type { GetCollection } from '../../application/use-cases/collection/get-collection';
 import type { CatalogPageContextStore } from '../../application/use-cases/catalog/pagination-context-store';
 
 export interface CatalogCommandHandlers {
@@ -15,6 +17,7 @@ export interface CatalogCommandHandlers {
   searchCards: SearchCards;
   getSet: GetSet;
   searchSets: SearchSets;
+  getCollection: GetCollection;
   pageContextStore: CatalogPageContextStore;
 }
 
@@ -64,6 +67,7 @@ export function createCommandRouter(
             catalog.pageContextStore,
             catalog.searchCards,
             catalog.searchSets,
+            catalog.getCollection,
           );
         } catch (error) {
           logger.error('interaction.failed', {

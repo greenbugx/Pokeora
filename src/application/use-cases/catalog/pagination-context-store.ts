@@ -1,4 +1,4 @@
-export type CatalogPageKind = 'card' | 'set';
+export type CatalogPageKind = 'card' | 'set' | 'collection';
 
 export interface CatalogCardPageQuery {
   name?: string;
@@ -12,9 +12,15 @@ export interface CatalogSetPageQuery {
   series?: string;
 }
 
+/** Collection pages are self-only: the context stores the Discord user. */
+export interface CatalogCollectionPageQuery {
+  discordId: string;
+}
+
 export type CatalogPageContext =
   | { id: string; userId: string; kind: 'card'; query: CatalogCardPageQuery }
-  | { id: string; userId: string; kind: 'set'; query: CatalogSetPageQuery };
+  | { id: string; userId: string; kind: 'set'; query: CatalogSetPageQuery }
+  | { id: string; userId: string; kind: 'collection'; query: CatalogCollectionPageQuery };
 
 export type NewCatalogPageContext = Omit<CatalogPageContext, 'id'>;
 

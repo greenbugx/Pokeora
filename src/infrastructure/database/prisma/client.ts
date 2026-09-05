@@ -8,9 +8,8 @@ export { db };
  * `db.transaction` callback expose an identically-typed `orm`, so repository
  * code is agnostic about which one it is running on.
  */
-export type DatabaseExecutor = Pick<typeof db, 'orm'>;
-
 type TransactionExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DatabaseExecutor = Pick<typeof db, 'orm' | 'runtime'> | TransactionExecutor;
 
 const activeTransaction = new AsyncLocalStorage<TransactionExecutor>();
 
@@ -20,6 +19,36 @@ const activeTransaction = new AsyncLocalStorage<TransactionExecutor>();
  */
 export function currentExecutor(): DatabaseExecutor {
   return activeTransaction.getStore() ?? db;
+}
+
+/**
+ * Executes a SQL-builder or raw-lane plan on the ambient executor. The root
+ * client runs plans through `db.runtime()`; a transaction context carries its
+ * own `execute`. Both stay inside the ambient transaction.
+ */
+export async function executeRawPlan<T = unknown>(executor: DatabaseExecutor, plan: unknown): Promise<T> {
+  if ('runtime' in executor) {
+    return (await (executor as typeof db).runtime().execute(plan as never)) as T;
+  }
+  return (await (executor as { execute(plan: unknown): Promise<unknown> }).execute(plan)) as T;
+}
+
+/** Detects a PostgreSQL foreign-key violation (SQLSTATE 23503). */
+export function isForeignKeyViolation(error: unknown, columnSuffix?: string): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 3; depth += 1) {
+    const candidate = current as { kind?: unknown; sqlState?: unknown; constraint?: unknown; code?: unknown; cause?: unknown };
+    if (
+      candidate.kind === 'sql_query' &&
+      candidate.sqlState === '23503' &&
+      (columnSuffix === undefined ||
+        (typeof candidate.constraint === 'string' && candidate.constraint.endsWith(columnSuffix)))
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return false;
 }
 
 /**

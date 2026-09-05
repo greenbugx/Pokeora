@@ -12,8 +12,10 @@ import type {
 } from '../../application/use-cases/catalog/pagination-context-store';
 import type { SearchCards } from '../../application/use-cases/catalog/card-queries';
 import type { SearchSets } from '../../application/use-cases/catalog/set-queries';
+import type { GetCollection } from '../../application/use-cases/collection/get-collection';
 import { formatCardSearch } from './card';
 import { formatSetSearch } from './set';
+import { formatCollection } from './collection';
 
 export const PAGE_CUSTOM_ID_PREFIX = 'pg:';
 
@@ -57,7 +59,7 @@ export function parsePageCustomId(
   const parts = customId.split(':');
   if (parts.length !== 4) return null;
   const [, kind, contextId, pageRaw] = parts;
-  if (kind !== 'card' && kind !== 'set') return null;
+  if (kind !== 'card' && kind !== 'set' && kind !== 'collection') return null;
   if (!/^[a-f0-9]+$/.test(contextId)) return null;
   const page = Number.parseInt(pageRaw, 10);
   if (!Number.isInteger(page) || page < 1) return null;
@@ -91,6 +93,7 @@ export async function handlePageButton(
   store: CatalogPageContextStore,
   searchCards: SearchCards,
   searchSets: SearchSets,
+  getCollection?: GetCollection,
 ): Promise<void> {
   const parsed = parsePageCustomId(interaction.customId);
   if (!parsed) return;
@@ -118,11 +121,24 @@ export async function handlePageButton(
       content: formatCardSearch(result.items, result.page, result.hasMore),
       ...(row ? { components: [row] } : {}),
     });
-  } else {
+  } else if (context.kind === 'set') {
     const result = await searchSets.execute({ ...context.query, page: parsed.page });
     const row = buildPageRow('set', parsed.contextId, result.page, result.hasMore);
     await interaction.update({
       content: formatSetSearch(result.items, result.page, result.hasMore),
+      ...(row ? { components: [row] } : {}),
+    });
+  } else if (context.kind === 'collection') {
+    if (!getCollection) return;
+    // The context is user-bound: the presser is always the collection owner
+    // so the stored Discord ID matches the interaction author.
+    const result = await getCollection.execute({
+      discordId: context.query.discordId,
+      page: parsed.page,
+    });
+    const row = buildPageRow('collection', parsed.contextId, result.page, result.hasMore);
+    await interaction.update({
+      content: formatCollection(result.items, result.page, result.hasMore),
       ...(row ? { components: [row] } : {}),
     });
   }
