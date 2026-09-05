@@ -10,6 +10,8 @@ export interface AppConfig {
   pokemonTcgApiKey?: string;
   /** Assumed language of the source dataset (EN default; not API-asserted). */
   pokemonTcgSourceLanguage: string;
+  /** Optional Redis for exact-lookup caching and pagination contexts. */
+  redisUrl?: string;
 }
 
 export class ConfigurationError extends Error {
@@ -42,5 +44,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     pokemonTcgApiBaseUrl: env['POKEMON_TCG_API_BASE_URL']?.trim() || 'https://api.pokemontcg.io/v2',
     pokemonTcgApiKey: env['POKEMON_TCG_API_KEY']?.trim() || undefined,
     pokemonTcgSourceLanguage: env['POKEMON_TCG_SOURCE_LANGUAGE']?.trim() || 'EN',
+    redisUrl: env['REDIS_URL']?.trim() || undefined,
   };
 }

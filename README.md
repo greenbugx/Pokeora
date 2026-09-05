@@ -30,7 +30,7 @@ Open booster packs, collect cards, build your binders, trade with other players,
 * **discord.js**
 * **Prisma 8** (contract-first workflow: `src/prisma/contract.prisma`)
 * **PostgreSQL** (15+)
-* **Redis** (planned for caching/cooldowns; not required yet)
+* **Redis** (optional — caches exact catalog lookups and pagination contexts; PostgreSQL alone is sufficient)
 
 ## 🏗️ Architecture
 
