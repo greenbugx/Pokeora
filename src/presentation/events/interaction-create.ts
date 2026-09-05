@@ -50,9 +50,19 @@ export function createCommandRouter(
       handle: (interaction) =>
         executeSetCommand(interaction, catalog.getSet, catalog.searchSets, catalog.pageContextStore),
     },
+    {
+      name: collectionCommandDefinition.name,
+      handle: (interaction) =>
+        executeCollectionCommand(interaction, catalog.getCollection, catalog.pageContextStore),
+    },
   ];
 
-  const definitions = [registerCommandDefinition, cardCommandDefinition, setCommandDefinition];
+  const definitions = [
+    registerCommandDefinition,
+    cardCommandDefinition,
+    setCommandDefinition,
+    collectionCommandDefinition,
+  ];
 
   return {
     event: Events.InteractionCreate,
